@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal
 import psycopg2
 import boto3
 import base64
@@ -107,6 +108,109 @@ def test_db_connection():
                 connection.close()
 
 
+def fetch_default_web_menu_items_from_db():
+    query_string = \
+   'SELECT ' + \
+        'item_uuid, ' + \
+        'item_name, ' + \
+        'item_price, ' + \
+        'modifier_group_uuid, ' + \
+        'modifier_group_name, ' + \
+        'default_is_web_menu_item ' + \
+    'FROM ' + \
+        '"view_default_web_menu_items"'
+    try:
+        # Create a cursor to perform database operations
+        connection = connect_to_db()
+        cursor = connection.cursor()
+        cursor.execute(query_string)
+        return cursor.fetchall()
+    except:
+        raise
+    finally:
+        try: cursor.close()
+        finally: connection.close()
+
+
+def fetch_default_web_menu_modifiers_from_db():
+    query_string = \
+   'SELECT ' + \
+        'modifier_group_uuid, ' + \
+        'modifier_group_name, ' + \
+        'modifier_uuid, ' + \
+        'modifier_name, ' + \
+        'modifier_price ' + \
+    'FROM ' + \
+        '"view_default_web_menu_modifiers"'
+    try:
+        # Create a cursor to perform database operations
+        connection = connect_to_db()
+        cursor = connection.cursor()
+        cursor.execute(query_string)
+        return cursor.fetchall()
+    except:
+        raise
+    finally:
+        try: cursor.close()
+        finally: connection.close()
+
+
+def fetch_web_menu_item_overrides_from_db(tfi_location_id):
+    query_string = \
+   'SELECT ' + \
+        'item_uuid, ' + \
+        'item_name, ' + \
+        'item_price, ' + \
+        'modifier_group_uuid, ' + \
+        'modifier_group_name, ' + \
+        'default_is_web_menu_item, ' + \
+        'item_local_price, ' + \
+        'local_is_web_menu_item, ' + \
+        'tfi_location_id ' + \
+    'FROM ' + \
+        '"view_web_menu_item_overrides"  ' + \
+    'WHERE ' + \
+        'tfi_location_id = %s '
+    try:
+        # Create a cursor to perform database operations
+        connection = connect_to_db()
+        cursor = connection.cursor()
+        cursor.execute(query_string, (tfi_location_id, ))
+        return cursor.fetchall()
+    except:
+        raise
+    finally:
+        try: cursor.close()
+        finally: connection.close()
+
+
+def fetch_web_menu_modifier_overrides_from_db(tfi_location_id):
+    query_string = \
+   'SELECT ' + \
+        'modifier_group_uuid, ' + \
+        'modifier_group_name, ' + \
+        'modifier_uuid, ' + \
+        'modifier_name, ' + \
+        'modifier_price, ' + \
+        'tfi_location_id, ' + \
+        'modifier_local_price ' + \
+    'FROM ' + \
+        '"view_web_menu_modifier_overrides"  ' + \
+    'WHERE ' + \
+        'tfi_location_id = %s '
+    try:
+        # Create a cursor to perform database operations
+        connection = connect_to_db()
+        cursor = connection.cursor()
+        cursor.execute(query_string, (tfi_location_id, ))
+        return cursor.fetchall()
+    except:
+        raise
+    finally:
+        try: cursor.close()
+        finally: connection.close()
+
+
 def fetch_local_flavors_from_db(tfi_location_id):
     query_string = \
    'SELECT ' + \
@@ -140,9 +244,66 @@ def get_gelato_sorbetto_flavors(tfi_location_id):
     return output
 
 
+def get_item_override_priceList(item_override, modifiers):
+    modifier_group_uuid = item_override[3]
+    if not modifier_group_uuid:   #No modifiers
+        # Return the default price unless the item has a local price
+        if not item_override[6]:
+            return [{'size': '', 'price': str(item_override[2])}]
+        else:
+            return [{'size': '', 'price': str(item_override[6])}]
+    else:
+        return modifiers[modifier_group_uuid]
+
+
+def process_items(tfi_location_id):
+    default_items = fetch_default_web_menu_items_from_db()
+    item_overrides, modifier_overrides = {}, {}
+    modifiers = {}
+    items = []
+
+    for item_row in fetch_web_menu_item_overrides_from_db(tfi_location_id):
+        item_overrides[item_row[0]] = item_row
+    for mod_row in fetch_web_menu_modifier_overrides_from_db(tfi_location_id):
+        modifier_overrides[mod_row[2]] = mod_row
+    for mod in fetch_default_web_menu_modifiers_from_db():
+        modifier_id = mod[2]
+        if modifier_id in modifier_overrides:   #There's a modifier override
+            mod_override = modifier_overrides[modifier_id]
+            final_mod = {'size': mod_override[3], 'price':str(mod_override[6])}
+        else:
+            final_mod = {'size': mod[3], 'price':str(mod[4])}
+        mod_group_id = mod[0]
+        if mod_group_id in modifiers:
+            modifiers[mod_group_id].append(final_mod)
+        else:
+            modifiers[mod_group_id] = [final_mod, ] 
+
+    for item in default_items:
+        item_id, is_web_menu = item[0], item[5]
+        #Determine whether or not this item is shown in the web menu
+        if item_id not in item_overrides and is_web_menu:
+            modifier_group_uuid = item[3]
+            #No item override
+            if not modifier_group_uuid:   #No modifier
+                items.append({'name': item[1], 'priceList': [{'size': '', 'price': str(item[2])}]})
+            else:
+                items.append({'name': item[1], 'priceList': modifiers[modifier_group_uuid]})
+        elif item_id in item_overrides and item_overrides[item_id][6]:
+            #There is an item override
+            items.append({'name': item[1], 'priceList': get_item_override_priceList(item_overrides[item_id], modifiers)})
+    return items
+
+
 def main():
     TEST_LOCATION = 'F00000-1'
-    print(get_gelato_sorbetto_flavors(TEST_LOCATION))
+    # print(get_gelato_sorbetto_flavors(TEST_LOCATION))
+    # print('\n', fetch_default_web_menu_modifiers_from_db())
+    # print('\n', fetch_web_menu_modifier_overrides_from_db(TEST_LOCATION))
+    items = process_items(TEST_LOCATION)
+    for item in items:
+        print('\n', str(item))
+
 
 if __name__ == "__main__":
     main()
