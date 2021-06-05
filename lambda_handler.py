@@ -116,7 +116,8 @@ def fetch_default_web_menu_items_from_db():
         'item_price, ' + \
         'modifier_group_uuid, ' + \
         'modifier_group_name, ' + \
-        'default_is_web_menu_item ' + \
+        'default_is_web_menu_item, ' + \
+        'item_category_name ' + \
     'FROM ' + \
         '"view_default_web_menu_items"'
     try:
@@ -139,7 +140,8 @@ def fetch_default_web_menu_modifiers_from_db():
         'modifier_group_name, ' + \
         'modifier_uuid, ' + \
         'modifier_name, ' + \
-        'modifier_price ' + \
+        'modifier_price, ' + \
+        'default_is_web_menu_modifier ' + \
     'FROM ' + \
         '"view_default_web_menu_modifiers"'
     try:
@@ -193,7 +195,9 @@ def fetch_web_menu_modifier_overrides_from_db(tfi_location_id):
         'modifier_name, ' + \
         'modifier_price, ' + \
         'tfi_location_id, ' + \
-        'modifier_local_price ' + \
+        'modifier_local_price, ' + \
+        'default_is_web_menu_modifier, ' + \
+        'local_is_web_menu_modifier ' + \
     'FROM ' + \
         '"view_web_menu_modifier_overrides"  ' + \
     'WHERE ' + \
@@ -256,43 +260,59 @@ def get_item_override_priceList(item_override, modifiers):
         return modifiers[modifier_group_uuid]
 
 
+def add_priced_item(priced_items, item, item_category):
+    category = None
+    for entry in priced_items['pricedItems']:
+        if entry['category'] == item_category:
+            category = entry
+    if category:
+        category['items'].append(item)
+    else:
+        priced_items['pricedItems'].append({'category': item_category, 'subCategory': '', 'items': [item]})
+
+
 def process_items(tfi_location_id):
     default_items = fetch_default_web_menu_items_from_db()
     item_overrides, modifier_overrides = {}, {}
     modifiers = {}
-    items = []
+    priced_items = {'pricedItems': []}
 
     for item_row in fetch_web_menu_item_overrides_from_db(tfi_location_id):
         item_overrides[item_row[0]] = item_row
     for mod_row in fetch_web_menu_modifier_overrides_from_db(tfi_location_id):
         modifier_overrides[mod_row[2]] = mod_row
     for mod in fetch_default_web_menu_modifiers_from_db():
+        final_mod = None
         modifier_id = mod[2]
         if modifier_id in modifier_overrides:   #There's a modifier override
             mod_override = modifier_overrides[modifier_id]
-            final_mod = {'size': mod_override[3], 'price':str(mod_override[6])}
+            if mod_override[8]:   #local_is_web_modifier == True
+                final_mod = {'size': mod_override[3], 'price':str(mod_override[6])}
         else:
-            final_mod = {'size': mod[3], 'price':str(mod[4])}
+            if mod[5]:   #default_is_web_menu_modifier == True
+                final_mod = {'size': mod[3], 'price':str(mod[4])}
         mod_group_id = mod[0]
-        if mod_group_id in modifiers:
-            modifiers[mod_group_id].append(final_mod)
-        else:
-            modifiers[mod_group_id] = [final_mod, ] 
+        if final_mod:
+            if mod_group_id in modifiers:
+                modifiers[mod_group_id].append(final_mod)
+            else:
+                modifiers[mod_group_id] = [final_mod, ] 
 
     for item in default_items:
-        item_id, is_web_menu = item[0], item[5]
+        item_id, is_web_menu, item_category = item[0], item[5], item[6]
         #Determine whether or not this item is shown in the web menu
         if item_id not in item_overrides and is_web_menu:
             modifier_group_uuid = item[3]
             #No item override
             if not modifier_group_uuid:   #No modifier
-                items.append({'name': item[1], 'priceList': [{'size': '', 'price': str(item[2])}]})
+                add_priced_item(priced_items, {'name': item[1], 'priceList': [{'size': '', 'price': str(item[2])}]}, item_category)
             else:
-                items.append({'name': item[1], 'priceList': modifiers[modifier_group_uuid]})
+                if modifier_group_uuid in modifiers:
+                    add_priced_item(priced_items, {'name': item[1], 'priceList': modifiers[modifier_group_uuid]}, item_category)
         elif item_id in item_overrides and item_overrides[item_id][6]:
             #There is an item override
-            items.append({'name': item[1], 'priceList': get_item_override_priceList(item_overrides[item_id], modifiers)})
-    return items
+            add_priced_item(priced_items, {'name': item[1], 'priceList': get_item_override_priceList(item_overrides[item_id], modifiers)}, item_category)
+    return priced_items
 
 
 def main():
@@ -300,9 +320,7 @@ def main():
     # print(get_gelato_sorbetto_flavors(TEST_LOCATION))
     # print('\n', fetch_default_web_menu_modifiers_from_db())
     # print('\n', fetch_web_menu_modifier_overrides_from_db(TEST_LOCATION))
-    items = process_items(TEST_LOCATION)
-    for item in items:
-        print('\n', str(item))
+    print(json.dumps(process_items(TEST_LOCATION), indent=4))
 
 
 if __name__ == "__main__":
