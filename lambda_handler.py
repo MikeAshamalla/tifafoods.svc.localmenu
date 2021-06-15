@@ -16,7 +16,7 @@ def lambda_handler(event, context):
     if location:
         return {
             'statusCode': 200,
-            'body': json.dumps(str(get_gelato_sorbetto_flavors(location)))
+            'body': json.dumps(str(main(location)))
         }
     else:
         return {
@@ -315,12 +315,16 @@ def process_items(tfi_location_id):
     return priced_items
 
 
-def main():
-    TEST_LOCATION = 'F00000-1'
+def main(location):
+    # TEST_LOCATION = 'F00000-1'
     # print(get_gelato_sorbetto_flavors(TEST_LOCATION))
     # print('\n', fetch_default_web_menu_modifiers_from_db())
     # print('\n', fetch_web_menu_modifier_overrides_from_db(TEST_LOCATION))
-    print(json.dumps(process_items(TEST_LOCATION), indent=4))
+    # print(json.dumps(process_items(TEST_LOCATION), indent=4))
+
+    fetch_default_web_menu_modifiers_from_db()
+    fetch_web_menu_modifier_overrides_from_db(location)
+    return process_items(location)
 
 
 if __name__ == "__main__":
