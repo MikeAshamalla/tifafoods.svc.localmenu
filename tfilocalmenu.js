@@ -14,6 +14,7 @@
 		var pricedItems = data.response.pricedItems;
 		var groupPricedItems = data.response.groupPricedItems;	
 		
+		jQuery('#tfilocalmenu').html('');
 		pricedItems.forEach(function (item, key) {
 			jQuery('#tfilocalmenu').append('<h1>' + item.category + '</h1>');
 			if (item.category == 'Gelato') {
@@ -39,6 +40,8 @@
 	}
 
 	jQuery(window).load(function($) {
+
+		jQuery('#tfilocalmenu').html('<div class="d-flex justify-content-center"><div class="spinner-border" role="status"><span class="sr-only">Loading...</span></div></div>');
 
 		var jqxhr = jQuery.getJSON('https://1jf6x7kd5a.execute-api.us-west-2.amazonaws.com/Prod/tifafoods_svc_localmenu?location=F00000-1')
 			.done(function( data ) {
