@@ -41,7 +41,7 @@
 
 	jQuery(window).load(function($) {
 
-		jQuery('#tfilocalmenu').html('<div class="d-flex justify-content-center"><div class="spinner-border" role="status"><span class="sr-only">Loading...</span></div></div>');
+		jQuery('#tfilocalmenu').html('<div style="text-align: center"><img src="https://tifachocolateandgelato.com/wp-content/uploads/2021/07/spinner.gif"/></div>');
 
 		var jqxhr = jQuery.getJSON('https://1jf6x7kd5a.execute-api.us-west-2.amazonaws.com/Prod/tifafoods_svc_localmenu?location=F00000-1')
 			.done(function( data ) {
