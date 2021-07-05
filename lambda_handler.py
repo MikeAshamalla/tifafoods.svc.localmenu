@@ -9,6 +9,7 @@ DATABASE = 'tfiweb'
 PORT = '5432'
 SECRET_NAME = 'tifafoods.tfimain.db'
 REGION_NAME = 'us-west-2'
+LOCAL_FLAVOR_CATEGORIES = ['Gelato']  #use the category as it appears in the db here
 
 def lambda_handler(event, context):
     if event['queryStringParameters']:
@@ -218,7 +219,7 @@ def fetch_web_menu_modifier_overrides_from_db(tfi_location_id):
         finally: connection.close()
 
 
-def fetch_local_flavors_from_db(tfi_location_id):
+def fetch_local_flavors_from_db(category, tfi_location_id):
     query_string = \
    'SELECT ' + \
         'flavor_name, ' + \
@@ -227,14 +228,15 @@ def fetch_local_flavors_from_db(tfi_location_id):
     'FROM ' + \
         '"view_local_flavors"  ' + \
     'WHERE ' + \
-        'tfi_location_id = %s AND flavor_group_name = %s ' + \
+        'tfi_location_id = %s ' + \
+        'AND category_name = %s ' + \
     'ORDER BY flavor_name'
 
     try:
         # Create a cursor to perform database operations
         connection = connect_to_db()
         cursor = connection.cursor()
-        cursor.execute(query_string, (tfi_location_id, 'Gelato & Sorbetto', ))
+        cursor.execute(query_string, (tfi_location_id, category, ))
         return cursor.fetchall()
     except:
         raise
@@ -243,11 +245,11 @@ def fetch_local_flavors_from_db(tfi_location_id):
         finally: connection.close()
 
 
-def get_gelato_sorbetto_flavors(tfi_location_id):
-    flavors = fetch_local_flavors_from_db(tfi_location_id)
-    output = {"category": "Gelato & Sorbetto", "subCategory": "Current Flavors", "itemList": []}
+def get_local_flavors(category, tfi_location_id):
+    flavors = fetch_local_flavors_from_db(category, tfi_location_id)
+    output = []
     for item in flavors:
-        output["itemList"].append(item[0])
+        output.append(item[0])
     return output
 
 
@@ -263,15 +265,25 @@ def get_item_override_priceList(item_override, modifiers):
         return modifiers[modifier_group_uuid]
 
 
-def add_priced_item(priced_items, item, item_category):
-    category = None
-    for entry in priced_items:
-        if entry["category"] == item_category:
-            category = entry
-    if category:
-        category["items"].append(item)
+def add_priced_item(priced_items, item, db_item_category, tfi_location_id):
+    existing_category_and_sub = None
+    item_subcategory = ""
+    if ':' in db_item_category:
+        idx = db_item_category.index(':')
+        item_subcategory = db_item_category[idx + 2:]
+        item_category = db_item_category[:idx]
     else:
-        priced_items.append({"category": item_category, "subCategory": "", "items": [item]})
+        item_category = db_item_category
+    for entry in priced_items:
+        if entry["category"] == item_category and entry["subCategory"] == item_subcategory:
+            existing_category_and_sub = entry
+    if existing_category_and_sub:
+        existing_category_and_sub["items"].append(item)
+    else:   #new category/subcategory entry
+        local_flavors = []
+        if db_item_category in LOCAL_FLAVOR_CATEGORIES:
+            local_flavors = get_local_flavors(db_item_category, tfi_location_id)
+        priced_items.append({"category": item_category, "subCategory": item_subcategory, "localFlavors": local_flavors, "items": [item]})
 
 
 def process_priced_items(tfi_location_id):
@@ -308,13 +320,13 @@ def process_priced_items(tfi_location_id):
             modifier_group_uuid = item[3]
             #No item override
             if not modifier_group_uuid:   #No modifier
-                add_priced_item(priced_items, {"name": item[1], "priceList": [{"size": "", "price": str(item[2])}]}, item_category)
+                add_priced_item(priced_items, {"name": item[1], "priceList": [{"size": "", "price": str(item[2])}]}, item_category, tfi_location_id)
             else:
                 if modifier_group_uuid in modifiers:
-                    add_priced_item(priced_items, {"name": item[1], "priceList": modifiers[modifier_group_uuid]}, item_category)
+                    add_priced_item(priced_items, {"name": item[1], "priceList": modifiers[modifier_group_uuid]}, item_category, tfi_location_id)
         elif item_id in item_overrides and item_overrides[item_id][6]:
             #There is an item override
-            add_priced_item(priced_items, {"name": item[1], "priceList": get_item_override_priceList(item_overrides[item_id], modifiers)}, item_category)
+            add_priced_item(priced_items, {"name": item[1], "priceList": get_item_override_priceList(item_overrides[item_id], modifiers)}, item_category, tfi_location_id)
     return priced_items
 
 
@@ -324,22 +336,12 @@ def main(location):
     # print('\n', fetch_web_menu_modifier_overrides_from_db(TEST_LOCATION))
     # print(json.dumps(process_items(TEST_LOCATION), indent=4))
 
-    TEST_GROUP_PRICED_ITEMS = \
-        [
-            {"category": "Gelato",
-            "subCategory": "Current Flavors",
-            "itemList": ["Dark Chocolate", "Cookie Butter", "Vanilla"],
-            "priceList": [{"size": "Small", "price": "4.95"}, {"size": "Medium", "price": "5.95"}, {"size": "Large", "price": "6.95"}, {"size": "Pint", "price": "12.95"}, {"size": "Quart", "price": "19.95"}]
-            }
-        ]
-
     data = {"response": {}}
 
     fetch_default_web_menu_modifiers_from_db()
     fetch_web_menu_modifier_overrides_from_db(location)
     priced_items = process_priced_items(location)
     data["response"]["pricedItems"] = priced_items
-    data["response"]["groupPricedItems"] = TEST_GROUP_PRICED_ITEMS
     
     return data
 
