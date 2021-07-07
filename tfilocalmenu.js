@@ -1,6 +1,16 @@
 //<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
 //<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
 //  <script>
+function getURLParam(name) {
+    var results = new RegExp('[\?&]' + name + '=([^&#]*)').exec(window.location.href);
+    if (results==null) {
+       return null;
+    }
+    else {
+       return results[1] || 0;
+    }
+}
+
 function addLocalFlavorItems(items) {
 	var htmlOut = '';
 
@@ -45,6 +55,8 @@ function displayItems(data) {
 
 jQuery(window).load(function($) {
 
+	alert('tfiloc = ' + getURLParam('tfiloc'));
+	
 	jQuery('#tfilocalmenu').html('<div style="text-align: center"><img src="https://tifachocolateandgelato.com/wp-content/uploads/2021/07/spinner.gif"\/><\/div>');
 
 	var jqxhr = jQuery.getJSON('https://1jf6x7kd5a.execute-api.us-west-2.amazonaws.com/Prod/tifafoods_svc_localmenu?location=F00000-1')
